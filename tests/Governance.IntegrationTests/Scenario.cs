@@ -1,7 +1,7 @@
-﻿using Governance.Abstractions.Abstractions;
+using Governance.Abstractions.Abstractions;
 using Governance.Abstractions.Contracts;
-using Governance.ConfigurationDemo;
-using Governance.ConfigurationDemo.Domain;
+using Governance.TestFixtures;
+using Governance.TestFixtures.Domain;
 using Governance.Core;
 using Governance.Testing.Domain;
 using Microsoft.Extensions.DependencyInjection;

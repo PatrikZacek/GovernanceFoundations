@@ -1,3 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup></PropertyGroup>
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Governance.Abstractions</PackageId>
+    <Description>Public contracts, action states, policies and results for governed action workflows.</Description>
+  </PropertyGroup>
 </Project>

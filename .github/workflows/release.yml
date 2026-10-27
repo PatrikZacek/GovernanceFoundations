@@ -1,0 +1,143 @@
+name: Prepare and approve NuGet release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable version tag, for example v0.1.0'
+        required: true
+        type: string
+      publish:
+        description: 'Request NuGet.org publication after artifact review and environment approval'
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: nuget-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve version and immutable commit from tag
+        id: version
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw 'Only stable vMAJOR.MINOR.PATCH tags are supported.'
+          }
+          $version = $env:RELEASE_TAG.Substring(1)
+          $commit = git rev-parse --verify "refs/tags/$env:RELEASE_TAG^{commit}"
+          if ($LASTEXITCODE) { throw 'Tag does not exist.' }
+          git merge-base --is-ancestor $commit origin/main
+          if ($LASTEXITCODE) { throw 'Release commit must be reachable from main.' }
+          git checkout --detach $commit
+          if ($LASTEXITCODE) { throw 'Tag checkout failed.' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore GovernanceFoundations.slnx --locked-mode
+      - run: dotnet build GovernanceFoundations.slnx -c Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+      - run: dotnet test GovernanceFoundations.slnx -c Release --no-build --logger trx --results-directory artifacts/test-results
+      - run: dotnet pack GovernanceFoundations.slnx -c Release --no-build -p:Version=${{ steps.version.outputs.version }} -o artifacts/packages
+      - run: ./eng/Verify-Packages.ps1 -Version '${{ steps.version.outputs.version }}' -Commit '${{ steps.version.outputs.commit }}'
+      - run: ./eng/Smoke-Test.ps1 -Version '${{ steps.version.outputs.version }}'
+      - run: ./eng/Verify-Reproducibility.ps1 -Version '${{ steps.version.outputs.version }}'
+      - name: Create checksums for approval
+        run: |
+          Get-ChildItem artifacts/packages -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content artifacts/SHA256SUMS
+          "Review six packages and SHA256SUMS for commit ${{ steps.version.outputs.commit }} before approving publication." >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nuget-${{ steps.version.outputs.version }}
+          path: |
+            artifacts/packages/*
+            artifacts/SHA256SUMS
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: release-test-results
+          path: artifacts/test-results/*
+          if-no-files-found: ignore
+  publish:
+    # No tag push publishes. Manual opt-in, repository opt-in and a protected
+    # environment are all required; the default repository state is inert.
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.publish && vars.NUGET_PUBLISH_ENABLED == 'true'
+    needs: prepare
+    environment: nuget-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Refuse an unprotected approval environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $environment = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:REPOSITORY/environments/nuget-production" -Headers @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $rule = @($environment.protection_rules | Where-Object type -eq 'required_reviewers')
+          if (!$rule.Count -or !$rule[0].reviewers.Count -or !$rule[0].prevent_self_review) {
+            throw 'Configure required reviewers and prevent self review before publication.'
+          }
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: nuget-${{ needs.prepare.outputs.version }}
+          path: artifacts
+      - name: Verify approved artifacts again
+        run: |
+          ./eng/Verify-Packages.ps1 -Version '${{ needs.prepare.outputs.version }}' -Commit '${{ needs.prepare.outputs.commit }}'
+          $lines = Get-Content artifacts/SHA256SUMS
+          if ($lines.Count -ne 6) { throw 'Expected six checksums.' }
+          foreach ($line in $lines) {
+            if ($line -notmatch '^([a-f0-9]{64})  ([A-Za-z0-9.]+\.(?:nupkg|snupkg))$') { throw 'Invalid checksum manifest.' }
+            if ((Get-FileHash (Join-Path artifacts/packages $Matches[2]) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Matches[1]) {
+              throw 'Artifact checksum mismatch.'
+            }
+          }
+      - name: Publish reviewed NuGet and symbol packages
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) { throw 'Environment-scoped NuGet API key is required.' }
+          # dotnet nuget push also uploads the matching .snupkg to NuGet.org's symbol server.
+          foreach ($id in 'Governance.Abstractions','Governance.Core','Governance.Persistence.Sqlite') {
+            dotnet nuget push "artifacts/packages/$id.${{ needs.prepare.outputs.version }}.nupkg" --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY
+            if ($LASTEXITCODE) { throw "Publication failed for $id. Inspect NuGet.org before retrying." }
+          }
