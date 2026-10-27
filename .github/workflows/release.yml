@@ -89,6 +89,9 @@ jobs:
       inputs.publish && vars.NUGET_PUBLISH_ENABLED == 'true'
     needs: prepare
     environment: nuget-production
+    permissions:
+      contents: read
+      actions: read # Read environment protection rules before using the NuGet key.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
