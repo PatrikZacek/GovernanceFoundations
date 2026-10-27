@@ -4,8 +4,8 @@ using Governance.Abstractions.Contracts;
 using Governance.Abstractions.Enums;
 using Governance.Abstractions.Exceptions;
 using Governance.Abstractions.Policy;
-using Governance.ConfigurationDemo;
-using Governance.ConfigurationDemo.Domain;
+using Governance.TestFixtures;
+using Governance.TestFixtures.Domain;
 using Governance.Core.Model;
 using Xunit;
 

@@ -1,5 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup></PropertyGroup>
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Governance.Core</PackageId>
+    <Description>Governed action lifecycle with policy evaluation, approval, execution, verification and recovery.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Governance.Abstractions/Governance.Abstractions.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />

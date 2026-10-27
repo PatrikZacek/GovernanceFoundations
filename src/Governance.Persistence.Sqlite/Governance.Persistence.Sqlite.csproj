@@ -1,5 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup></PropertyGroup>
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Governance.Persistence.Sqlite</PackageId>
+    <Description>Durable SQLite and Entity Framework Core storage for Governance.Core.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Governance.Core/Governance.Core.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />

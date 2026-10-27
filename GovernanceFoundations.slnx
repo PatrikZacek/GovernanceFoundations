@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Governance.Abstractions/Governance.Abstractions.csproj" />
+    <Project Path="src/Governance.Core/Governance.Core.csproj" />
+    <Project Path="src/Governance.Persistence.Sqlite/Governance.Persistence.Sqlite.csproj" />
+    <Project Path="src/Governance.Testing/Governance.Testing.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Governance.IntegrationTests/Governance.IntegrationTests.csproj" />
+    <Project Path="tests/Governance.TestFixtures/Governance.TestFixtures.csproj" />
+    <Project Path="tests/Governance.UnitTests/Governance.UnitTests.csproj" />
+  </Folder>
+</Solution>
